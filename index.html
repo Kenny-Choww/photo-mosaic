@@ -2,372 +2,284 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Photo Mosaic (Fixed)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flexible Order 3D Mosaic</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
-        
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         
-        /* --- MENU BUTTON --- */
+        /* MENU BUTTON */
         #menu-toggle {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 20;
-            background: rgba(10, 10, 10, 0.8);
-            backdrop-filter: blur(5px);
-            color: #00e5ff;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 12px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 20px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            position: absolute; top: 20px; left: 20px; z-index: 20;
+            background: rgba(10, 10, 10, 0.8); backdrop-filter: blur(5px);
+            color: #00e5ff; border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 20px; transition: all 0.3s ease;
         }
-        #menu-toggle:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            transform: scale(1.05);
-        }
-
-        /* --- MAIN PANEL (Hidden by default) --- */
+        
+        /* MAIN PANEL */
         #main-menu {
-            position: absolute;
-            top: 80px;
-            left: 20px;
-            z-index: 15;
-            width: 260px;
-            background: rgba(15, 15, 15, 0.9);
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 20px;
+            position: absolute; top: 80px; left: 20px; z-index: 15;
+            width: 280px; background: rgba(15, 15, 15, 0.95);
+            backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px; padding: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
-            
-            opacity: 0;
-            transform: translateY(-20px);
-            visibility: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            opacity: 0; transform: translateY(-20px); visibility: hidden;
+            transition: all 0.3s ease;
+            max-height: 80vh; overflow-y: auto;
         }
-
-        #main-menu.active {
-            opacity: 1;
-            transform: translateY(0);
-            visibility: visible;
-        }
+        #main-menu.active { opacity: 1; transform: translateY(0); visibility: visible; }
 
         .section { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
-        .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-
         h3 { margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #00e5ff; letter-spacing: 1px; font-weight: 600; }
         p { font-size: 11px; color: #aaa; margin: 0 0 10px 0; line-height: 1.4; }
 
-        .file-upload { position: relative; width: 100%; margin-bottom: 5px; }
-        
         .upload-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            background: #222;
-            color: white;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            cursor: pointer;
-            font-size: 12px;
-            transition: 0.2s;
-            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center;
+            width: 100%; background: #222; color: white; padding: 12px;
+            border-radius: 6px; border: 1px solid #333; cursor: pointer;
+            font-size: 12px; box-sizing: border-box;
         }
-        .upload-btn:hover { border-color: #00e5ff; background: #333; }
-        input[type="file"] { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-
+        input[type="file"] { display: none; }
+        
+        /* Actions */
         .btn-action {
-            background: linear-gradient(90deg, #00e5ff, #0099ff);
-            color: #000;
-            font-weight: bold;
-            border: none;
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-top: 5px;
-            font-size: 12px;
-            text-transform: uppercase;
+            background: linear-gradient(90deg, #00e5ff, #0099ff); color: #000;
+            font-weight: bold; border: none; width: 100%; padding: 12px;
+            border-radius: 6px; cursor: pointer; margin-top: 5px; font-size: 12px;
         }
-        .btn-action:hover { filter: brightness(1.2); }
 
-        #photo-count { font-size: 10px; color: #666; text-align: right; margin-top: 4px; }
-        .highlight { color: #00e5ff; }
+        /* PROGRESS BAR */
+        #progress-container { margin-top: 10px; display: none; }
+        #progress-bar { width: 100%; height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+        #progress-fill { height: 100%; width: 0%; background: #00e5ff; transition: width 0.1s; }
+        #progress-text { font-size: 10px; color: #fff; margin-top: 4px; text-align: right; }
 
     </style>
     
-    <!-- Three.js & Controls -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
-    <!-- Menu Toggle Button -->
     <button id="menu-toggle" onclick="toggleMenu()">☰</button>
 
-    <!-- Dropdown Menu Panel -->
     <div id="main-menu">
         <div class="section">
             <h3>1. Pattern Image</h3>
             <p>The main shape formed by the swarm.</p>
-            <div class="file-upload">
-                <label class="upload-btn">
-                    Upload Pattern
-                    <input type="file" id="upload-pattern" accept="image/*">
-                </label>
-            </div>
+            <label class="upload-btn">
+                Upload Pattern
+                <input type="file" id="upload-pattern" accept="image/*">
+            </label>
         </div>
 
         <div class="section">
             <h3>2. Particle Photos</h3>
-            <p>The tiny images inside each dot.</p>
-            <div class="file-upload">
-                <label class="upload-btn">
-                    Upload Photos (Multiple)
-                    <input type="file" id="upload-photos" accept="image/*" multiple>
-                </label>
+            <p>Upload multiple photos.</p>
+            <label class="upload-btn">
+                Select Photos to Upload
+                <input type="file" id="upload-photos" accept="image/*" multiple>
+            </label>
+            
+            <div id="progress-container">
+                <div id="progress-bar"><div id="progress-fill"></div></div>
+                <div id="progress-text">Processing...</div>
             </div>
-            <div id="photo-count">0 photos loaded</div>
         </div>
 
         <div class="section">
             <h3>3. Controls</h3>
-            <p>Rotate to see 3D effect. <br>Reset to align pattern.</p>
             <button class="btn-action" onclick="resetView()">Reset View</button>
         </div>
     </div>
 
     <div id="canvas-container"></div>
 
-    <!-- VERTEX SHADER -->
+    <!-- SHADERS -->
     <script type="x-shader/x-vertex" id="vertexshader">
         attribute float size;
         attribute vec3 customColor;
         attribute float imgIndex;
-
         varying vec3 vColor;
         varying float vImgIndex;
-        
         uniform float uScale;
-
         void main() {
             vColor = customColor;
             vImgIndex = imgIndex;
-
             vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-            
-            // Size attenuation
             gl_PointSize = size * uScale * (400.0 / -mvPosition.z);
-            
             gl_Position = projectionMatrix * mvPosition;
         }
     </script>
 
-    <!-- FRAGMENT SHADER (Corrected for Top-Left Origin) -->
     <script type="x-shader/x-fragment" id="fragmentshader">
         uniform sampler2D uAtlas;      
         uniform float uAtlasGrid;      
         uniform float uMixFactor;      
-        
         varying vec3 vColor;           
         varying float vImgIndex;       
-
         void main() {
-            // Coordinate Logic:
-            // 1. We use flipY = false on texture, so Data (0,0) is Top-Left.
-            // 2. We use simple mapping here:
-            //    gl_PointCoord (0,0) = Top-Left of sprite
-            //    rowIndex 0 = Top Row of atlas
-            
             float cols = uAtlasGrid;
             float rows = uAtlasGrid;
-            
             float colIndex = mod(vImgIndex, cols);
             float rowIndex = floor(vImgIndex / cols);
             
-            // Direct mapping: No '1.0 -' flipping
+            // Direct UV mapping (Top-Left Origin)
             vec2 uv = (vec2(colIndex, rowIndex) + gl_PointCoord) / vec2(cols, rows);
-            
             vec4 texColor = texture2D(uAtlas, uv);
             
-            // Circular cutout
             vec2 coord = gl_PointCoord - vec2(0.5);
             if(length(coord) > 0.5) discard;
-            
             if (texColor.a < 0.1) discard;
-
-            // Color Mixing Logic
-            vec3 mixedColor = mix(vColor, texColor.rgb, uMixFactor);
             
-            gl_FragColor = vec4(mixedColor, 1.0);
+            gl_FragColor = vec4(mix(vColor, texColor.rgb, uMixFactor), 1.0);
         }
     </script>
 
     <script>
-        // --- UI LOGIC ---
         function toggleMenu() {
-            const menu = document.getElementById('main-menu');
-            const btn = document.getElementById('menu-toggle');
-            menu.classList.toggle('active');
-            btn.innerHTML = menu.classList.contains('active') ? '✕' : '☰';
+            document.getElementById('main-menu').classList.toggle('active');
+            document.getElementById('menu-toggle').innerText = document.getElementById('main-menu').classList.contains('active') ? '✕' : '☰';
         }
 
         // --- 1. SYSTEM CONFIG ---
         const PERFECT_CAM_Z = 300; 
-        const IMAGE_SIZE = 120;    
+        const IMAGE_SIZE = 120; // 14,400 particles
         const PARTICLE_SIZE = 6.0;
+        const ATLAS_SIZE = 2048; 
 
-        // --- 2. THREE.JS SETUP ---
+        // --- 2. GLOBAL STATE ---
+        // We store the current pattern image here so it persists when we update photos
+        let currentPatternImage = new Image();
+        currentPatternImage.crossOrigin = "Anonymous";
+
+        // --- 3. THREE.JS SETUP ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x050505);
-        scene.fog = new THREE.FogExp2(0x050505, 0.001);
-
+        
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
         camera.position.set(0, 0, PERFECT_CAM_Z);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
 
-        // --- CONTROLS ---
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.minDistance = 10;
-        controls.maxDistance = 600;
-        
         controls.autoRotate = true;
-        controls.autoRotateSpeed = 2.0; 
+        controls.autoRotateSpeed = 2.0;
+        controls.addEventListener('start', () => { controls.autoRotate = false; });
 
-        controls.addEventListener('start', () => {
-            controls.autoRotate = false;
-        });
-
-        // --- 3. TEXTURE ATLAS GENERATOR ---
+        // --- 4. ATLAS MANAGER ---
         class TextureAtlas {
             constructor() {
                 this.canvas = document.createElement('canvas');
-                this.canvas.width = 2048; 
-                this.canvas.height = 2048;
+                this.canvas.width = ATLAS_SIZE; 
+                this.canvas.height = ATLAS_SIZE;
                 this.ctx = this.canvas.getContext('2d');
                 this.gridSize = 1;
-                this.images = [];
+                this.totalSlots = 1;
             }
 
             generateDefaults() {
-                this.images = [];
+                this.gridSize = 4; // 4x4 grid
+                this.totalSlots = 16;
+                const step = ATLAS_SIZE / 4;
                 const colors = ['#FF5733', '#33FF57', '#3357FF', '#F333FF', '#33FFF5', '#FF33A8'];
-                for(let i=0; i<9; i++) {
-                    const c = document.createElement('canvas');
-                    c.width = 128; c.height = 128;
-                    const cx = c.getContext('2d');
-                    
-                    cx.fillStyle = colors[i % colors.length];
-                    cx.fillRect(0,0,128,128); 
-                    
-                    cx.fillStyle = 'white';
-                    cx.font = 'bold 80px Arial'; 
-                    cx.textAlign='center'; 
-                    cx.textBaseline='middle';
-                    cx.fillText(i+1, 64, 64);
-                    
-                    // Up Arrow to confirm orientation
-                    cx.font = '30px Arial';
-                    cx.fillText('↑', 64, 20);
-
-                    const img = new Image(); img.src = c.toDataURL();
-                    this.images.push(img);
+                
+                this.ctx.clearRect(0,0,ATLAS_SIZE,ATLAS_SIZE);
+                for(let i=0; i<16; i++) {
+                    const col = i % 4;
+                    const row = Math.floor(i / 4);
+                    this.ctx.fillStyle = colors[i % colors.length];
+                    this.ctx.fillRect(col*step, row*step, step, step);
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.font = 'bold 60px Arial';
+                    this.ctx.textAlign='center';
+                    this.ctx.fillText(i+1, col*step + step/2, row*step + step/2);
                 }
-                return this.update();
+                return this.updateTexture();
             }
 
-            addImages(fileList) {
-                let loaded = 0;
-                this.images = []; 
-                Array.from(fileList).forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            this.images.push(img);
-                            loaded++;
-                            document.getElementById('photo-count').innerText = `${loaded} photos loaded`;
-                            document.getElementById('photo-count').classList.add('highlight');
-                            if(loaded === fileList.length) this.update();
-                        };
-                        img.src = e.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                });
-            }
-
-            update() {
-                if(this.images.length === 0) return null;
-                this.gridSize = Math.ceil(Math.sqrt(this.images.length));
-                const stepX = this.canvas.width / this.gridSize;
-                const stepY = this.canvas.height / this.gridSize;
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // Draw images to canvas (0,0 is Top-Left)
-                this.images.forEach((img, index) => {
-                    const col = index % this.gridSize;
-                    const row = Math.floor(index / this.gridSize);
-                    this.ctx.drawImage(img, col * stepX, row * stepY, stepX, stepY);
-                });
-                
+            updateTexture() {
                 const tex = new THREE.CanvasTexture(this.canvas);
-                
-                // VITAL: Do not flip Y. Canvas Top-Left = UV(0,0).
-                tex.flipY = false; 
-                
-                tex.minFilter = THREE.LinearMipMapLinearFilter;
+                tex.flipY = false;
+                tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
                 return tex;
+            }
+
+            async processPhotos(files, onProgress, onComplete) {
+                const count = files.length;
+                this.gridSize = Math.ceil(Math.sqrt(count));
+                this.totalSlots = count;
+                const step = ATLAS_SIZE / this.gridSize;
+                this.ctx.clearRect(0, 0, ATLAS_SIZE, ATLAS_SIZE);
+                
+                for (let i = 0; i < count; i++) {
+                    const file = files[i];
+                    const url = URL.createObjectURL(file);
+                    try {
+                        const img = await this.loadImage(url);
+                        const col = i % this.gridSize;
+                        const row = Math.floor(i / this.gridSize);
+                        this.ctx.drawImage(img, col * step, row * step, step, step);
+                        img.src = ""; 
+                    } catch (err) { console.error("Skipped bad image", err); } 
+                    finally { URL.revokeObjectURL(url); }
+
+                    if(onProgress) onProgress(i + 1, count);
+                    if(i % 5 === 0) await new Promise(r => setTimeout(r, 10));
+                }
+
+                if(onComplete) onComplete(this.updateTexture());
+            }
+
+            loadImage(src) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = reject;
+                    img.src = src;
+                });
             }
         }
 
         const atlasManager = new TextureAtlas();
         let currentAtlasTexture = atlasManager.generateDefaults();
 
-        // --- 4. PARTICLE GENERATION ---
-        let particleSystem;
-        let uniforms;
+        // --- 5. PARTICLE SYSTEM ---
+        let particleSystem, uniforms;
 
-        function createParticles(patternImage) {
+        // Function now uses GLOBAL currentPatternImage
+        function createParticles() {
+            // Safety check
+            if (!currentPatternImage || currentPatternImage.width === 0) return;
+
             if (particleSystem) scene.remove(particleSystem);
 
             const canvas = document.createElement('canvas');
             canvas.width = IMAGE_SIZE; canvas.height = IMAGE_SIZE;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(patternImage, 0, 0, IMAGE_SIZE, IMAGE_SIZE);
+            ctx.drawImage(currentPatternImage, 0, 0, IMAGE_SIZE, IMAGE_SIZE);
             const data = ctx.getImageData(0, 0, IMAGE_SIZE, IMAGE_SIZE).data;
 
             const positions = [];
             const colors = [];
             const sizes = [];
             const imgIndices = [];
-            const numImages = atlasManager.images.length || 1;
+            const totalSlots = atlasManager.totalSlots || 1;
 
             for (let y = 0; y < IMAGE_SIZE; y++) {
                 for (let x = 0; x < IMAGE_SIZE; x++) {
                     const i = (y * IMAGE_SIZE + x) * 4;
-                    const a = data[i+3];
-
-                    if (a > 60) {
+                    if (data[i+3] > 60) {
                         const origX = (x - IMAGE_SIZE / 2) * 1.5;
                         const origY = -(y - IMAGE_SIZE / 2) * 1.5;
-
-                        // Anamorphic 3D logic
                         const zDepth = (Math.random() - 0.5) * 300; 
                         const distToCam = PERFECT_CAM_Z - zDepth;
                         const ratio = distToCam / PERFECT_CAM_Z;
@@ -375,7 +287,7 @@
                         positions.push(origX * ratio, origY * ratio, zDepth);
                         colors.push(data[i]/255, data[i+1]/255, data[i+2]/255);
                         sizes.push(PARTICLE_SIZE * (Math.random()*0.5 + 0.8));
-                        imgIndices.push(Math.floor(Math.random() * numImages));
+                        imgIndices.push(Math.floor(Math.random() * totalSlots));
                     }
                 }
             }
@@ -407,51 +319,72 @@
             scene.add(particleSystem);
         }
 
-        // --- 5. INITIALIZATION & EVENTS ---
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.onload = () => createParticles(img);
+        // --- 6. INITIALIZATION & EVENTS ---
         
-        // Default pattern
-        const canvas = document.createElement('canvas');
-        canvas.width=100; canvas.height=100;
-        const cx = canvas.getContext('2d');
-        cx.fillStyle='black'; cx.fillRect(0,0,100,100);
-        cx.fillStyle='#00e5ff'; cx.font='80px Arial'; cx.textAlign='center'; cx.textBaseline='middle';
-        cx.fillText('★', 50, 55);
-        img.src = canvas.toDataURL();
+        // 1. Create a Default Pattern programmatically
+        const c = document.createElement('canvas'); c.width=100; c.height=100;
+        const cx = c.getContext('2d'); cx.fillStyle='black'; cx.fillRect(0,0,100,100);
+        cx.fillStyle='#00e5ff'; cx.font='80px Arial'; cx.textAlign='center'; cx.fillText('★',50,80);
+        
+        // 2. Set the global image and Init
+        currentPatternImage.src = c.toDataURL();
+        currentPatternImage.onload = () => createParticles(); // Initial build
 
+        // --- EVENT: Pattern Upload ---
         document.getElementById('upload-pattern').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if(!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const i = new Image();
-                i.onload = () => createParticles(i);
-                i.src = ev.target.result;
-            }
-            reader.readAsDataURL(file);
+            const url = URL.createObjectURL(file);
+            
+            // Update the global pattern image
+            currentPatternImage.src = url;
+            // When it loads, rebuild particles using current photos (atlas)
+            currentPatternImage.onload = () => {
+                createParticles();
+                // We don't revoke immediately in case we need to redraw, 
+                // but for memory we could draw to a hidden canvas. 
+                // For simplicity, we keep the src alive.
+            };
         });
 
-        document.getElementById('upload-photos').addEventListener('change', (e) => {
-            if(e.target.files.length > 0) {
-                atlasManager.addImages(e.target.files);
-                setTimeout(() => {
-                    currentAtlasTexture = atlasManager.update();
+        // --- EVENT: Photo Upload ---
+        document.getElementById('upload-photos').addEventListener('change', async (e) => {
+            if(e.target.files.length === 0) return;
+            
+            const files = e.target.files;
+            const progressContainer = document.getElementById('progress-container');
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            document.body.style.cursor = 'wait';
+
+            await atlasManager.processPhotos(
+                files, 
+                (current, total) => {
+                    const pct = Math.round((current/total)*100);
+                    progressFill.style.width = pct + '%';
+                    progressText.innerText = `Processing ${current} / ${total}`;
+                },
+                (newTexture) => {
+                    currentAtlasTexture = newTexture;
                     if(uniforms) {
                         uniforms.uAtlas.value = currentAtlasTexture;
                         uniforms.uAtlasGrid.value = atlasManager.gridSize;
-                        createParticles(img); 
+                        // Re-distribute random indices using the SAVED pattern
+                        createParticles(); 
                     }
-                }, 500);
-            }
+                    document.body.style.cursor = 'default';
+                    setTimeout(() => { progressContainer.style.display = 'none'; }, 1000);
+                }
+            );
         });
 
         window.resetView = () => {
-            controls.autoRotate = false; // Stop spinning
-            controls.reset(); 
+            controls.autoRotate = false;
+            controls.reset();
             camera.position.set(0, 0, PERFECT_CAM_Z);
-            camera.lookAt(0, 0, 0);
         };
 
         window.addEventListener('resize', () => {
@@ -460,23 +393,16 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // --- 6. RENDER LOOP ---
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
 
             if (uniforms) {
-                // Color Mixing Logic based on zoom distance
                 const dist = camera.position.distanceTo(new THREE.Vector3(0,0,0));
-                
                 let mix = 0;
-                // Fade to photos when closer than 150 units
-                if(dist < 150) {
-                    mix = THREE.MathUtils.mapLinear(dist, 50, 150, 1.0, 0.0);
-                }
+                if(dist < 150) mix = THREE.MathUtils.mapLinear(dist, 50, 150, 1.0, 0.0);
                 uniforms.uMixFactor.value = mix;
             }
-
             renderer.render(scene, camera);
         }
         animate();
