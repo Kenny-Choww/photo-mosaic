@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Photo Mosaic</title>
+    <title>3D Photo Mosaic (Fixed)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
         
@@ -46,28 +46,24 @@
             padding: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
             
-            /* Animation States */
             opacity: 0;
             transform: translateY(-20px);
             visibility: hidden;
             transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
         }
 
-        /* Active State */
         #main-menu.active {
             opacity: 1;
             transform: translateY(0);
             visibility: visible;
         }
 
-        /* UI Elements */
         .section { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 
         h3 { margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #00e5ff; letter-spacing: 1px; font-weight: 600; }
         p { font-size: 11px; color: #aaa; margin: 0 0 10px 0; line-height: 1.4; }
 
-        /* File Upload Styling */
         .file-upload { position: relative; width: 100%; margin-bottom: 5px; }
         
         .upload-btn {
@@ -151,7 +147,7 @@
 
     <div id="canvas-container"></div>
 
-    <!-- SHADERS -->
+    <!-- VERTEX SHADER -->
     <script type="x-shader/x-vertex" id="vertexshader">
         attribute float size;
         attribute vec3 customColor;
@@ -166,16 +162,16 @@
             vColor = customColor;
             vImgIndex = imgIndex;
 
-            // Standard Position (Anamorphic depth is pre-calculated in JS)
             vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
             
-            // Size attenuation (particles get smaller when further)
+            // Size attenuation
             gl_PointSize = size * uScale * (400.0 / -mvPosition.z);
             
             gl_Position = projectionMatrix * mvPosition;
         }
     </script>
 
+    <!-- FRAGMENT SHADER (Corrected for Top-Left Origin) -->
     <script type="x-shader/x-fragment" id="fragmentshader">
         uniform sampler2D uAtlas;      
         uniform float uAtlasGrid;      
@@ -185,15 +181,20 @@
         varying float vImgIndex;       
 
         void main() {
-            // Texture Atlas UV Calculation
+            // Coordinate Logic:
+            // 1. We use flipY = false on texture, so Data (0,0) is Top-Left.
+            // 2. We use simple mapping here:
+            //    gl_PointCoord (0,0) = Top-Left of sprite
+            //    rowIndex 0 = Top Row of atlas
+            
             float cols = uAtlasGrid;
             float rows = uAtlasGrid;
             
             float colIndex = mod(vImgIndex, cols);
             float rowIndex = floor(vImgIndex / cols);
             
-            // Map gl_PointCoord (0..1) to sub-rectangle in atlas
-            vec2 uv = (vec2(colIndex, rows - 1.0 - rowIndex) + gl_PointCoord) / vec2(cols, rows);
+            // Direct mapping: No '1.0 -' flipping
+            vec2 uv = (vec2(colIndex, rowIndex) + gl_PointCoord) / vec2(cols, rows);
             
             vec4 texColor = texture2D(uAtlas, uv);
             
@@ -204,7 +205,6 @@
             if (texColor.a < 0.1) discard;
 
             // Color Mixing Logic
-            // 0 = Mosaic Color, 1 = Photo Color
             vec3 mixedColor = mix(vColor, texColor.rgb, uMixFactor);
             
             gl_FragColor = vec4(mixedColor, 1.0);
@@ -239,18 +239,16 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
 
-        // --- CONTROLS WITH AUTO SPIN ---
+        // --- CONTROLS ---
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.minDistance = 10;
         controls.maxDistance = 600;
         
-        // Auto Spin Setup
         controls.autoRotate = true;
         controls.autoRotateSpeed = 2.0; 
 
-        // Stop spinning on user interaction
         controls.addEventListener('start', () => {
             controls.autoRotate = false;
         });
@@ -273,11 +271,20 @@
                     const c = document.createElement('canvas');
                     c.width = 128; c.height = 128;
                     const cx = c.getContext('2d');
+                    
                     cx.fillStyle = colors[i % colors.length];
-                    cx.beginPath(); cx.arc(64,64,60,0,Math.PI*2); cx.fill();
-                    cx.fillStyle = 'rgba(0,0,0,0.5)';
-                    cx.font = 'bold 40px Arial'; cx.textAlign='center'; cx.textBaseline='middle';
+                    cx.fillRect(0,0,128,128); 
+                    
+                    cx.fillStyle = 'white';
+                    cx.font = 'bold 80px Arial'; 
+                    cx.textAlign='center'; 
+                    cx.textBaseline='middle';
                     cx.fillText(i+1, 64, 64);
+                    
+                    // Up Arrow to confirm orientation
+                    cx.font = '30px Arial';
+                    cx.fillText('↑', 64, 20);
+
                     const img = new Image(); img.src = c.toDataURL();
                     this.images.push(img);
                 }
@@ -310,12 +317,19 @@
                 const stepX = this.canvas.width / this.gridSize;
                 const stepY = this.canvas.height / this.gridSize;
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw images to canvas (0,0 is Top-Left)
                 this.images.forEach((img, index) => {
                     const col = index % this.gridSize;
                     const row = Math.floor(index / this.gridSize);
                     this.ctx.drawImage(img, col * stepX, row * stepY, stepX, stepY);
                 });
+                
                 const tex = new THREE.CanvasTexture(this.canvas);
+                
+                // VITAL: Do not flip Y. Canvas Top-Left = UV(0,0).
+                tex.flipY = false; 
+                
                 tex.minFilter = THREE.LinearMipMapLinearFilter;
                 tex.magFilter = THREE.LinearFilter;
                 return tex;
@@ -449,7 +463,7 @@
         // --- 6. RENDER LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-            controls.update(); // Handles auto-rotate and damping
+            controls.update();
 
             if (uniforms) {
                 // Color Mixing Logic based on zoom distance
