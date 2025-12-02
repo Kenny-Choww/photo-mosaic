@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Interactive Photo Mosaic</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
+        
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* UI Layer */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            pointer-events: none; /* Let clicks pass through */
+            max-height: 90vh;
+        }
+
+        .panel {
+            background: rgba(15, 15, 15, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 20px;
+            border-radius: 12px;
+            pointer-events: auto; /* Re-enable clicks for UI */
+            color: white;
+            width: 260px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s;
+        }
+
+        h3 { margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; color: #00e5ff; letter-spacing: 1px; }
+        p { font-size: 11px; color: #aaa; margin-bottom: 10px; line-height: 1.4; }
+
+        /* Custom Inputs */
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        
+        .upload-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            background: linear-gradient(45deg, #222, #333);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+            box-sizing: border-box;
+        }
+        .upload-btn:hover { border-color: #00e5ff; background: #333; }
+        input[type="file"] { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+        .btn-action {
+            background: #00e5ff;
+            color: #000;
+            font-weight: bold;
+            border: none;
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        .btn-action:hover { background: #fff; }
+    </style>
+    
+    <!-- Three.js & Controls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    
+    <div id="ui-layer">
+        <div class="panel">
+            <h3>1. The Pattern</h3>
+            <p>The main shape formed by the swarm.</p>
+            <div class="file-upload">
+                <label class="upload-btn">
+                    Upload Pattern Image
+                    <input type="file" id="upload-pattern" accept="image/*">
+                </label>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>2. The Particles</h3>
+            <p>Upload multiple photos. Each particle will be a unique photo.</p>
+            <div class="file-upload">
+                <label class="upload-btn">
+                    Upload Photos (Select Multiple)
+                    <input type="file" id="upload-photos" accept="image/*" multiple>
+                </label>
+            </div>
+            <div id="photo-count" style="font-size:10px; color:#00e5ff; text-align:right;">0 photos loaded</div>
+        </div>
+
+        <div class="panel">
+            <h3>View Control</h3>
+            <p>Zoom in to see photos. Zoom out to see pattern.</p>
+            <button class="btn-action" onclick="resetView()">Reset View (Align)</button>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <!-- SHADERS -->
+    <script type="x-shader/x-vertex" id="vertexshader">
+        attribute float size;
+        attribute vec3 customColor;
+        attribute float imgIndex;
+
+        varying vec3 vColor;
+        varying float vImgIndex;
+        
+        uniform float uScale;
+
+        void main() {
+            vColor = customColor;
+            vImgIndex = imgIndex;
+
+            // Standard Position (Anamorphic depth is pre-calculated in JS)
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            
+            // Size attenuation (particles get smaller when further)
+            gl_PointSize = size * uScale * (400.0 / -mvPosition.z);
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragmentshader">
+        uniform sampler2D uAtlas;      
+        uniform float uAtlasGrid;      
+        uniform float uMixFactor;      
+        
+        varying vec3 vColor;           
+        varying float vImgIndex;       
+
+        void main() {
+            // Texture Atlas UV Calculation
+            float cols = uAtlasGrid;
+            float rows = uAtlasGrid;
+            
+            float colIndex = mod(vImgIndex, cols);
+            float rowIndex = floor(vImgIndex / cols);
+            
+            // Map gl_PointCoord (0..1) to sub-rectangle in atlas
+            vec2 uv = (vec2(colIndex, rows - 1.0 - rowIndex) + gl_PointCoord) / vec2(cols, rows);
+            
+            vec4 texColor = texture2D(uAtlas, uv);
+            
+            // Circular cutout
+            vec2 coord = gl_PointCoord - vec2(0.5);
+            if(length(coord) > 0.5) discard;
+            
+            if (texColor.a < 0.1) discard;
+
+            // Color Mixing Logic
+            // 0 = Mosaic Color, 1 = Photo Color
+            vec3 mixedColor = mix(vColor, texColor.rgb, uMixFactor);
+            
+            gl_FragColor = vec4(mixedColor, 1.0);
+        }
+    </script>
+
+    <script>
+        // --- 1. SYSTEM CONFIG ---
+        const PERFECT_CAM_Z = 300; 
+        const IMAGE_SIZE = 120;    
+        const PARTICLE_SIZE = 6.0;
+
+        // --- 2. THREE.JS SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.FogExp2(0x050505, 0.001);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+        camera.position.set(0, 0, PERFECT_CAM_Z);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // --- CONTROLS WITH AUTO SPIN ---
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 600;
+        
+        // Auto Spin Setup
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 2.0; 
+
+        // Stop spinning on user interaction
+        controls.addEventListener('start', () => {
+            controls.autoRotate = false;
+        });
+
+        // --- 3. TEXTURE ATLAS GENERATOR ---
+        class TextureAtlas {
+            constructor() {
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = 2048; 
+                this.canvas.height = 2048;
+                this.ctx = this.canvas.getContext('2d');
+                this.gridSize = 1;
+                this.images = [];
+            }
+
+            generateDefaults() {
+                this.images = [];
+                const colors = ['#FF5733', '#33FF57', '#3357FF', '#F333FF', '#33FFF5', '#FF33A8'];
+                for(let i=0; i<9; i++) {
+                    const c = document.createElement('canvas');
+                    c.width = 128; c.height = 128;
+                    const cx = c.getContext('2d');
+                    cx.fillStyle = colors[i % colors.length];
+                    cx.beginPath(); cx.arc(64,64,60,0,Math.PI*2); cx.fill();
+                    cx.fillStyle = 'rgba(0,0,0,0.5)';
+                    cx.font = 'bold 40px Arial'; cx.textAlign='center'; cx.textBaseline='middle';
+                    cx.fillText(i+1, 64, 64);
+                    const img = new Image(); img.src = c.toDataURL();
+                    this.images.push(img);
+                }
+                return this.update();
+            }
+
+            addImages(fileList) {
+                let loaded = 0;
+                this.images = []; 
+                Array.from(fileList).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            this.images.push(img);
+                            loaded++;
+                            document.getElementById('photo-count').innerText = `${loaded} photos loaded`;
+                            if(loaded === fileList.length) this.update();
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            update() {
+                if(this.images.length === 0) return null;
+                this.gridSize = Math.ceil(Math.sqrt(this.images.length));
+                const stepX = this.canvas.width / this.gridSize;
+                const stepY = this.canvas.height / this.gridSize;
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.images.forEach((img, index) => {
+                    const col = index % this.gridSize;
+                    const row = Math.floor(index / this.gridSize);
+                    this.ctx.drawImage(img, col * stepX, row * stepY, stepX, stepY);
+                });
+                const tex = new THREE.CanvasTexture(this.canvas);
+                tex.minFilter = THREE.LinearMipMapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                return tex;
+            }
+        }
+
+        const atlasManager = new TextureAtlas();
+        let currentAtlasTexture = atlasManager.generateDefaults();
+
+        // --- 4. PARTICLE GENERATION ---
+        let particleSystem;
+        let uniforms;
+
+        function createParticles(patternImage) {
+            if (particleSystem) scene.remove(particleSystem);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = IMAGE_SIZE; canvas.height = IMAGE_SIZE;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(patternImage, 0, 0, IMAGE_SIZE, IMAGE_SIZE);
+            const data = ctx.getImageData(0, 0, IMAGE_SIZE, IMAGE_SIZE).data;
+
+            const positions = [];
+            const colors = [];
+            const sizes = [];
+            const imgIndices = [];
+            const numImages = atlasManager.images.length || 1;
+
+            for (let y = 0; y < IMAGE_SIZE; y++) {
+                for (let x = 0; x < IMAGE_SIZE; x++) {
+                    const i = (y * IMAGE_SIZE + x) * 4;
+                    const a = data[i+3];
+
+                    if (a > 60) {
+                        const origX = (x - IMAGE_SIZE / 2) * 1.5;
+                        const origY = -(y - IMAGE_SIZE / 2) * 1.5;
+
+                        // Anamorphic 3D logic
+                        const zDepth = (Math.random() - 0.5) * 300; 
+                        const distToCam = PERFECT_CAM_Z - zDepth;
+                        const ratio = distToCam / PERFECT_CAM_Z;
+
+                        positions.push(origX * ratio, origY * ratio, zDepth);
+                        colors.push(data[i]/255, data[i+1]/255, data[i+2]/255);
+                        sizes.push(PARTICLE_SIZE * (Math.random()*0.5 + 0.8));
+                        imgIndices.push(Math.floor(Math.random() * numImages));
+                    }
+                }
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('customColor', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+            geometry.setAttribute('imgIndex', new THREE.Float32BufferAttribute(imgIndices, 1));
+
+            uniforms = {
+                uAtlas: { value: currentAtlasTexture },
+                uAtlasGrid: { value: atlasManager.gridSize },
+                uScale: { value: 1.0 },
+                uMixFactor: { value: 0.0 }
+            };
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: document.getElementById('vertexshader').textContent,
+                fragmentShader: document.getElementById('fragmentshader').textContent,
+                blending: THREE.AdditiveBlending,
+                depthTest: false,
+                transparent: true,
+                vertexColors: true
+            });
+
+            particleSystem = new THREE.Points(geometry, material);
+            scene.add(particleSystem);
+        }
+
+        // --- 5. INITIALIZATION & EVENTS ---
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = () => createParticles(img);
+        
+        // Default pattern
+        const canvas = document.createElement('canvas');
+        canvas.width=100; canvas.height=100;
+        const cx = canvas.getContext('2d');
+        cx.fillStyle='black'; cx.fillRect(0,0,100,100);
+        cx.fillStyle='#00e5ff'; cx.font='80px Arial'; cx.textAlign='center'; cx.textBaseline='middle';
+        cx.fillText('★', 50, 55);
+        img.src = canvas.toDataURL();
+
+        document.getElementById('upload-pattern').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const i = new Image();
+                i.onload = () => createParticles(i);
+                i.src = ev.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('upload-photos').addEventListener('change', (e) => {
+            if(e.target.files.length > 0) {
+                atlasManager.addImages(e.target.files);
+                setTimeout(() => {
+                    currentAtlasTexture = atlasManager.update();
+                    if(uniforms) {
+                        uniforms.uAtlas.value = currentAtlasTexture;
+                        uniforms.uAtlasGrid.value = atlasManager.gridSize;
+                        createParticles(img); 
+                    }
+                }, 500);
+            }
+        });
+
+        window.resetView = () => {
+            controls.autoRotate = false; // Stop spinning
+            controls.reset(); 
+            camera.position.set(0, 0, PERFECT_CAM_Z);
+            camera.lookAt(0, 0, 0);
+        };
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 6. RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // Handles auto-rotate and damping
+
+            if (uniforms) {
+                // Color Mixing Logic based on zoom distance
+                const dist = camera.position.distanceTo(new THREE.Vector3(0,0,0));
+                
+                let mix = 0;
+                // Fade to photos when closer than 150 units
+                if(dist < 150) {
+                    mix = THREE.MathUtils.mapLinear(dist, 50, 150, 1.0, 0.0);
+                }
+                uniforms.uMixFactor.value = mix;
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>
